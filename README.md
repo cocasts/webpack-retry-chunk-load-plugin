@@ -51,6 +51,59 @@ plugins: [
 
 - webpack > 5.0.0
 
+## Principle
+
+rewrite `__webpack_require__` function to retry or using fallback path to load chunk.
+
+### RuntimeGlobals.loadScript
+if `shouldTryFallback === true`, get the fallback path of the chunk when over the maxRetries.
+```tsx
+${RuntimeGlobals.loadScript} = function(url, done, key, chunkId) {
+  var retries = countMap.hasOwnProperty(chunkId) ? countMap[chunkId] : ${maxRetries};
+  var finalUrl = url;
+  if (retries < 0 && ${shouldTryFallback}) {
+    finalUrl = url.replace(${
+      RuntimeGlobals.publicPath
+    }, fallbackPath);
+    isTriedFallbackMap[chunkId] = true;
+  }
+  var result = oldLoadScript(finalUrl, done, key, chunkId);
+  return result;
+};
+```
+
+### RuntimeGlobals.ensureChunk
+add retry feature of ensureChunk load.
+```tsx
+${RuntimeGlobals.ensureChunk} = function(chunkId){
+  var result = oldEnsureScript(chunkId);
+  return result.catch(function(error){
+    var retries = countMap.hasOwnProperty(chunkId) ? countMap[chunkId] : ${maxRetries};
+    if (retries < 1 && (${shouldTryFallback} === !!isTriedFallbackMap[chunkId])) {
+      var realSrc = oldGetScript(chunkId);
+      error.message = 'Loading chunk ' + chunkId + ' failed after ${maxRetries} retries.\\n(' + realSrc + ')';
+      error.request = realSrc;${
+        this.options.lastResortScript
+          ? this.options.lastResortScript
+          : ''
+      }
+      
+      throw error;
+    }
+    return new Promise(function (resolve) {
+      var retryAttempt = ${maxRetries} - retries + 1;
+      setTimeout(function () {
+        var retryAttemptString = '&retry-attempt=' + retryAttempt;
+        var cacheBust = ${getCacheBustString()} + retryAttemptString;
+        queryMap[chunkId] = cacheBust;
+        countMap[chunkId] = retries - 1;
+        resolve(${RuntimeGlobals.ensureChunk}(chunkId));
+      }, getRetryDelay(retryAttempt))
+    })
+  });
+};
+```
+
 ## License
 
 MIT
