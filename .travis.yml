@@ -1,0 +1,20 @@
+language: node_js
+
+node_js:
+  - '12'
+  - '14'
+  - '16'
+
+script: npm run ci
+
+notifications:
+  email: false
+
+cache:
+  directories:
+    - node_modules
+
+after_success:
+  - npm run codecov
+
+dist: trusty
